@@ -225,61 +225,47 @@ function updateLegend(mode) {
 }
 
 async function loadData() {
-    const response = await fetch('data.csv.gz');
+    const response = await fetch('data_simplified.geojson.gz');
     const arrayBuffer = await response.arrayBuffer();
     const decompressed = pako.ungzip(new Uint8Array(arrayBuffer), { to: 'string' });
+    const data = JSON.parse(decompressed);
 
-    Papa.parse(decompressed, {
-        header: true,
-        complete: function(results) {
-            const districts = {};
+    const districts = {};
+    currentData = data.features;
 
-            currentData = results.data
-                .filter(row => row.geom_wkt)
-                .map(row => {
-                    const geojson = wellknown.parse(row.geom_wkt);
-                    const feature = {
-                        type: "Feature",
-                        properties: row,
-                        geometry: geojson
-                    };
+    currentData.forEach(feature => {
+        const districtName = feature.properties.district_name;
+        if (!districts[districtName]) {
+            districts[districtName] = [];
+        }
+        districts[districtName].push(feature);
+    });
 
-                    const districtName = row.district_name;
-                    if (!districts[districtName]) {
-                        districts[districtName] = [];
-                    }
-                    districts[districtName].push(feature);
-
-                    return feature;
-                });
-
-            // Group by district and create boundaries
-            districtBoundaries = Object.keys(districts).map(name => {
-                const features = districts[name];
-                try {
-                    let unioned = features[0];
-                    for (let i = 1; i < features.length; i++) {
-                        unioned = turf.union(turf.featureCollection([unioned, features[i]]));
-                    }
-                    unioned.properties = { district_name: name };
-                    return unioned;
-                } catch (e) {
-                    console.error(`Error unioning district ${name}:`, e);
-                    // Fallback: return a collection of the original features if union fails
-                    return {
-                        type: "Feature",
-                        properties: { district_name: name },
-                        geometry: {
-                            type: "GeometryCollection",
-                            geometries: features.map(f => f.geometry)
-                        }
-                    };
+    // Group by district and create boundaries
+    districtBoundaries = Object.keys(districts).map(name => {
+        const features = districts[name];
+        try {
+            let unioned = features[0];
+            for (let i = 1; i < features.length; i++) {
+                unioned = turf.union(turf.featureCollection([unioned, features[i]]));
+            }
+            unioned.properties = { district_name: name };
+            return unioned;
+        } catch (e) {
+            console.error(`Error unioning district ${name}:`, e);
+            // Fallback: return a collection of the original features if union fails
+            return {
+                type: "Feature",
+                properties: { district_name: name },
+                geometry: {
+                    type: "GeometryCollection",
+                    geometries: features.map(f => f.geometry)
                 }
-            });
-            
-            updateMap('change:2024-2025');
+            };
         }
     });
+    
+    updateMap('change:2024-2025');
 }
 
 loadData();

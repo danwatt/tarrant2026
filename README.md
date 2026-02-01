@@ -63,7 +63,31 @@ from base b
          join voting_precincts vp on b.precinct = vp.precinct::varchar
 group by b.precinct, dm.district_name, vp.geom
 order by b.precinct;
+```
 
+## Data Conversion Tools
 
+### `convert_to_geojson.js`
 
+A utility script to convert the source CSV (with WKT geometry) into GeoJSON and optionally simplify it to reduce file size.
+
+**Installation:**
+```bash
+npm install papaparse wellknown pako topojson-server topojson-simplify topojson-client
+```
+
+**Usage:**
+```bash
+node convert_to_geojson.js <input_csv> <output_geojson> [geometry_column] [tolerance]
+```
+
+- `input_csv`: Path to the input file (supports `.csv` or `.csv.gz`).
+- `output_geojson`: Path where the GeoJSON will be saved (supports `.geojson` or `.geojson.gz`).
+- `geometry_column` (optional): Name of the column containing WKT (default: `geom_wkt`).
+- `tolerance` (optional): Simplification tolerance (e.g., `0.0001` or `0.0005`). This uses topological simplification to preserve shared borders. Default is `0` (no simplification).
+
+**Example:**
+```bash
+# Convert, simplify, and compress for web use
+node convert_to_geojson.js data.csv.gz data_simplified.geojson.gz geom_wkt 0.0001
 ```
