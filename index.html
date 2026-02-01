@@ -52,11 +52,23 @@
 <body>
     <div id="map"></div>
     <div class="controls">
+        <strong>Redness Change:</strong><br>
         <label>
-            <input type="radio" name="yearRange" value="2024-2025" checked> 2024-2025
+            <input type="radio" name="visualization" value="change:2024-2025" checked> 2024-2025
         </label><br>
         <label>
-            <input type="radio" name="yearRange" value="2025-2026"> 2025-2026
+            <input type="radio" name="visualization" value="change:2025-2026"> 2025-2026
+        </label>
+        <hr>
+        <strong>Absolute Redness:</strong><br>
+        <label>
+            <input type="radio" name="visualization" value="absolute:2024"> 2024
+        </label><br>
+        <label>
+            <input type="radio" name="visualization" value="absolute:2025"> 2025
+        </label><br>
+        <label>
+            <input type="radio" name="visualization" value="absolute:2026"> 2026
         </label>
     </div>
     <div id="legend" class="legend"></div>
