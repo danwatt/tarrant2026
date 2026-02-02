@@ -13,6 +13,7 @@ let districtLayer;
 let labelLayer;
 let currentData = [];
 let districtBoundaries = [];
+let isdChartInstance = null;
 
 function getColor(change) {
     // change is rednessEnd - rednessStart, typically between -1 and 1
@@ -61,7 +62,11 @@ function getAbsoluteColor(redness) {
     return colors[6];
 }
 
-function updateMap(selection) {
+function updateMap() {
+    const baseYear = document.getElementById('baseYear').value;
+    const compareYear = document.getElementById('compareYear').value;
+    const isComparison = compareYear !== 'none';
+
     if (geojsonLayer) {
         map.removeLayer(geojsonLayer);
     }
@@ -72,21 +77,17 @@ function updateMap(selection) {
         map.removeLayer(labelLayer);
     }
 
-    const [mode, value] = selection.split(':');
-
     geojsonLayer = L.geoJson(currentData, {
         style: function(feature) {
             let color;
-            if (mode === 'change') {
-                const startYear = value.split('-')[0];
-                const endYear = value.split('-')[1];
-                const rednessStart = parseFloat(feature.properties[`redness_${startYear}`]);
-                const rednessEnd = parseFloat(feature.properties[`redness_${endYear}`]);
-                const change = rednessEnd - rednessStart;
+            if (isComparison) {
+                const rednessStart = parseFloat(feature.properties[`redness_${compareYear}`]);
+                const rednessEnd = parseFloat(feature.properties[`redness_${baseYear}`]);
+                const change = rednessStart - rednessEnd;
                 if (isNaN(change)) return { fillOpacity: 0, weight: 0 };
                 color = getColor(change);
             } else {
-                const redness = parseFloat(feature.properties[`redness_${value}`]);
+                const redness = parseFloat(feature.properties[`redness_${baseYear}`]);
                 if (isNaN(redness)) return { fillOpacity: 0, weight: 0 };
                 color = getAbsoluteColor(redness);
             }
@@ -104,43 +105,49 @@ function updateMap(selection) {
                 <strong>Precinct: ${feature.properties.precinct}</strong><br>
                 District: ${feature.properties.district_name}<br>
                 <hr>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <th style="text-align: left;">Year</th>
+                            <th style="text-align: right;">Ballots</th>
+                            <th style="text-align: right;">Redness</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             `;
 
-            if (mode === 'change') {
-                const startYear = value.split('-')[0];
-                const endYear = value.split('-')[1];
-                const startVal = feature.properties[`redness_${startYear}`];
-                const endVal = feature.properties[`redness_${endYear}`];
-                const startBallots = feature.properties[`ballots_${startYear}`];
-                const endBallots = feature.properties[`ballots_${endYear}`];
+            const years = ['2020', '2024', '2025', '2026'];
+            const baseYear = document.getElementById('baseYear').value;
 
+            years.forEach(year => {
+                const val = parseFloat(feature.properties[`redness_${year}`]);
+                const ballots = feature.properties[`ballots_${year}`];
+                const isSelected = year === baseYear;
+                const rowStyle = isSelected ? 'style="font-weight: bold; background-color: #f9f9f9;"' : '';
+                
                 popupContent += `
-                    <strong>${startYear}:</strong><br>
-                    Ballots: ${startBallots || 'N/A'}<br>
-                    Redness: ${startVal || 'N/A'}<br>
-                    <br>
-                    <strong>${endYear}:</strong><br>
-                    Ballots: ${endBallots || 'N/A'}<br>
-                    Redness: ${endVal || 'N/A'}<br>
-                    <hr>
-                    Change in Redness: ${(!isNaN(endVal - startVal) ? (endVal - startVal).toFixed(4) : 'N/A')}
+                    <tr ${rowStyle}>
+                        <td style="padding: 2px 0;">${year}</td>
+                        <td style="text-align: right; padding: 2px 0;">${ballots || 'N/A'}</td>
+                        <td style="text-align: right; padding: 2px 0;">${!isNaN(val) ? (val * 100).toFixed(2) + '%' : 'N/A'}</td>
+                    </tr>
                 `;
-            } else {
-                const years = ['2024', '2025', '2026'];
-                years.forEach(year => {
-                    const val = feature.properties[`redness_${year}`];
-                    const ballots = feature.properties[`ballots_${year}`];
-                    const isSelected = year === value;
-                    
-                    if (isSelected) popupContent += "<strong>";
-                    popupContent += `
-                        <strong>${year}:</strong><br>
-                        Ballots: ${ballots || 'N/A'}<br>
-                        Redness: ${val || 'N/A'}<br>
-                    `;
-                    if (isSelected) popupContent += "</strong>";
-                    if (year !== '2026') popupContent += '<br>';
-                });
+            });
+
+            popupContent += `
+                    </tbody>
+                </table>
+            `;
+
+            if (isComparison) {
+                const rednessStart = parseFloat(feature.properties[`redness_${compareYear}`]);
+                const rednessEnd = parseFloat(feature.properties[`redness_${baseYear}`]);
+                const change = rednessStart - rednessEnd;
+                popupContent += `
+                    <hr>
+                    <strong>Change (${baseYear} to ${compareYear}):</strong> 
+                    ${!isNaN(change) ? (change * 100).toFixed(2) + '%' : 'N/A'}
+                `;
             }
 
             layer.bindPopup(popupContent);
@@ -178,12 +185,12 @@ function updateMap(selection) {
     });
     labelLayer.addTo(map);
     
-    updateLegend(mode);
+    updateLegend(isComparison);
 }
 
-function updateLegend(mode) {
+function updateLegend(isComparison) {
     const legend = document.getElementById('legend');
-    if (mode === 'change') {
+    if (isComparison) {
         legend.innerHTML = '<h4>Redness Change</h4>';
         const shades = [
             { val: -0.25, label: 'More Blue (<-25%)' },
@@ -265,13 +272,173 @@ async function loadData() {
         }
     });
     
-    updateMap('change:2024-2025');
+    updateMap();
 }
 
 loadData();
 
-document.querySelectorAll('input[name="visualization"]').forEach(input => {
-    input.addEventListener('change', (e) => {
-        updateMap(e.target.value);
+document.getElementById('baseYear').addEventListener('change', updateMap);
+document.getElementById('compareYear').addEventListener('change', updateMap);
+
+// ISD Chart Modal Logic
+const modal = document.getElementById("isdModal");
+const btn = document.getElementById("isdChartBtn");
+const span = document.getElementsByClassName("close")[0];
+
+btn.onclick = function() {
+    modal.style.display = "block";
+    showISDChart();
+}
+
+span.onclick = function() {
+    modal.style.display = "none";
+}
+
+window.onclick = function(event) {
+    if (event.target == modal) {
+        modal.style.display = "none";
+    }
+}
+
+function showISDChart() {
+    const isdData = {};
+    const years = ['2020', '2024', '2025', '2026'];
+
+    currentData.forEach(feature => {
+        const isd = feature.properties.district_name;
+        if (!isdData[isd]) {
+            isdData[isd] = {};
+            years.forEach(year => {
+                isdData[isd][year] = { totalRednessWeight: 0, totalBallots: 0 };
+            });
+        }
+
+        years.forEach(year => {
+            const redness = parseFloat(feature.properties[`redness_${year}`]);
+            const ballots = parseInt(feature.properties[`ballots_${year}`]);
+            if (!isNaN(redness) && !isNaN(ballots) && ballots > 0) {
+                isdData[isd][year].totalRednessWeight += (redness * ballots);
+                isdData[isd][year].totalBallots += ballots;
+            }
+        });
     });
-});
+
+    const chartData = Object.keys(isdData).map(isd => {
+        const stats = {};
+        years.forEach(year => {
+            if (isdData[isd][year].totalBallots > 0) {
+                stats[year] = isdData[isd][year].totalRednessWeight / isdData[isd][year].totalBallots;
+            } else {
+                stats[year] = null;
+            }
+        });
+
+        const shift2024 = (stats['2024'] !== null && stats['2020'] !== null) ? (stats['2024'] - stats['2020']) : null;
+        const shift2025 = (stats['2025'] !== null && stats['2024'] !== null) ? (stats['2025'] - stats['2024']) : null;
+        const shift2026 = (stats['2026'] !== null && stats['2025'] !== null) ? (stats['2026'] - stats['2025']) : null;
+
+        return {
+            isd: isd,
+            shift2024: shift2024,
+            shift2025: shift2025,
+            shift2026: shift2026,
+            totalChange: (stats['2026'] !== null && stats['2020'] !== null) ? (stats['2026'] - stats['2020']) : null,
+            stats: stats
+        };
+    }).filter(d => d.totalChange !== null);
+
+    // Sort by 2026 redness level (descending) so most red is first
+    chartData.sort((a, b) => (b.stats['2026'] || 0) - (a.stats['2026'] || 0));
+
+    const ctx = document.getElementById('isdChart').getContext('2d');
+    
+    if (isdChartInstance) {
+        isdChartInstance.destroy();
+    }
+
+    isdChartInstance = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [
+                {
+                    label: '2020',
+                    data: chartData.map((d, i) => ({ x: d.stats['2020'] * 100, y: i })),
+                    backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: '2024',
+                    data: chartData.map((d, i) => ({ x: d.stats['2024'] * 100, y: i })),
+                    backgroundColor: 'rgba(255, 206, 86, 0.8)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: '2025',
+                    data: chartData.map((d, i) => ({ x: d.stats['2025'] * 100, y: i })),
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: '2026',
+                    data: chartData.map((d, i) => ({ x: d.stats['2026'] * 100, y: i })),
+                    backgroundColor: 'rgba(153, 102, 255, 0.8)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Redness (%)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(1) + '%';
+                        }
+                    },
+                    suggestedMin: 0,
+                    suggestedMax: 100
+                },
+                y: {
+                    ticks: {
+                        callback: function(value) {
+                            return chartData[value]?.isd;
+                        },
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const d = chartData[context.dataIndex];
+                            const year = context.dataset.label;
+                            const value = context.parsed.x;
+                            return `${d.isd} (${year}): ${value.toFixed(2)}%`;
+                        },
+                        afterBody: function(context) {
+                            const d = chartData[context[0].dataIndex];
+                            return [
+                                '',
+                                `2020: ${(d.stats['2020'] * 100).toFixed(2)}%`,
+                                `2024: ${(d.stats['2024'] * 100).toFixed(2)}%`,
+                                `2025: ${(d.stats['2025'] * 100).toFixed(2)}%`,
+                                `2026: ${(d.stats['2026'] * 100).toFixed(2)}%`,
+                                `Total Change: ${(d.totalChange * 100).toFixed(2)}%`
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
