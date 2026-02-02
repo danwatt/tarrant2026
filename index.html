@@ -128,16 +128,20 @@
                 (possibly wrong) assumption that the shapes for 2026 were the same as far back as 2020.</li>
                 <li>Data for 2025 and 2026 only covers precincts in SD9. Summary information, including
                 ISDs outside of SD9, will be incomplete or inaccurate.</li>
+                <li><a href="https://github.com/danwatt/tarrant2026">Github for Requests or bugs</a></li>
             </ul>
         </div>
-        <button id="isdChartBtn">Show ISD Redness History Chart</button>
+        <button id="isdChartBtn">Show ISD Redness & Turnout History Chart</button>
     </div>
     <div id="legend" class="legend"></div>
 
     <div id="isdModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h3>ISD Redness History</h3>
+            <h3>ISD Redness & Turnout History</h3>
+            <div style="font-size: 12px; margin-bottom: 10px;">
+                Circles = Redness %, Squares = Turnout %
+            </div>
             <div style="height: 600px;">
                 <canvas id="isdChart"></canvas>
             </div>

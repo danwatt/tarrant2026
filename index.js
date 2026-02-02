@@ -110,6 +110,8 @@ function updateMap() {
                         <tr style="border-bottom: 1px solid #eee;">
                             <th style="text-align: left;">Year</th>
                             <th style="text-align: right;">Ballots</th>
+                            <th style="text-align: right;">Voters</th>
+                            <th style="text-align: right;">Turnout</th>
                             <th style="text-align: right;">Redness</th>
                         </tr>
                     </thead>
@@ -121,14 +123,19 @@ function updateMap() {
 
             years.forEach(year => {
                 const val = parseFloat(feature.properties[`redness_${year}`]);
-                const ballots = feature.properties[`ballots_${year}`];
+                const ballots = parseInt(feature.properties[`ballots_${year}`]);
+                const voters = parseInt(feature.properties[`voters_${year}`]);
+                const turnout = (!isNaN(ballots) && !isNaN(voters) && voters > 0) ? (ballots / voters) : null;
+
                 const isSelected = year === baseYear;
                 const rowStyle = isSelected ? 'style="font-weight: bold; background-color: #f9f9f9;"' : '';
                 
                 popupContent += `
                     <tr ${rowStyle}>
                         <td style="padding: 2px 0;">${year}</td>
-                        <td style="text-align: right; padding: 2px 0;">${ballots || 'N/A'}</td>
+                        <td style="text-align: right; padding: 2px 0;">${!isNaN(ballots) ? ballots.toLocaleString() : 'N/A'}</td>
+                        <td style="text-align: right; padding: 2px 0;">${!isNaN(voters) ? voters.toLocaleString() : 'N/A'}</td>
+                        <td style="text-align: right; padding: 2px 0;">${turnout !== null ? (turnout * 100).toFixed(2) + '%' : 'N/A'}</td>
                         <td style="text-align: right; padding: 2px 0;">${!isNaN(val) ? (val * 100).toFixed(2) + '%' : 'N/A'}</td>
                     </tr>
                 `;
@@ -309,16 +316,20 @@ function showISDChart() {
         if (!isdData[isd]) {
             isdData[isd] = {};
             years.forEach(year => {
-                isdData[isd][year] = { totalRednessWeight: 0, totalBallots: 0 };
+                isdData[isd][year] = { totalRednessWeight: 0, totalBallots: 0, totalVoters: 0 };
             });
         }
 
         years.forEach(year => {
             const redness = parseFloat(feature.properties[`redness_${year}`]);
             const ballots = parseInt(feature.properties[`ballots_${year}`]);
+            const voters = parseInt(feature.properties[`voters_${year}`]);
             if (!isNaN(redness) && !isNaN(ballots) && ballots > 0) {
                 isdData[isd][year].totalRednessWeight += (redness * ballots);
                 isdData[isd][year].totalBallots += ballots;
+            }
+            if (!isNaN(voters)) {
+                isdData[isd][year].totalVoters += voters;
             }
         });
     });
@@ -327,28 +338,27 @@ function showISDChart() {
         const stats = {};
         years.forEach(year => {
             if (isdData[isd][year].totalBallots > 0) {
-                stats[year] = isdData[isd][year].totalRednessWeight / isdData[isd][year].totalBallots;
+                stats[year] = {
+                    redness: isdData[isd][year].totalRednessWeight / isdData[isd][year].totalBallots,
+                    turnout: isdData[isd][year].totalBallots / isdData[isd][year].totalVoters,
+                    ballots: isdData[isd][year].totalBallots,
+                    voters: isdData[isd][year].totalVoters
+                };
             } else {
                 stats[year] = null;
             }
         });
 
-        const shift2024 = (stats['2024'] !== null && stats['2020'] !== null) ? (stats['2024'] - stats['2020']) : null;
-        const shift2025 = (stats['2025'] !== null && stats['2024'] !== null) ? (stats['2025'] - stats['2024']) : null;
-        const shift2026 = (stats['2026'] !== null && stats['2025'] !== null) ? (stats['2026'] - stats['2025']) : null;
-
         return {
             isd: isd,
-            shift2024: shift2024,
-            shift2025: shift2025,
-            shift2026: shift2026,
-            totalChange: (stats['2026'] !== null && stats['2020'] !== null) ? (stats['2026'] - stats['2020']) : null,
+            totalChange: (stats['2026'] !== null && stats['2020'] !== null) ? (stats['2026'].redness - stats['2020'].redness) : null,
+            totalTurnoutChange: (stats['2026'] !== null && stats['2020'] !== null) ? (stats['2026'].turnout - stats['2020'].turnout) : null,
             stats: stats
         };
-    }).filter(d => d.totalChange !== null);
+    }).filter(d => d.stats['2020'] !== null || d.stats['2024'] !== null || d.stats['2025'] !== null || d.stats['2026'] !== null);
 
     // Sort by 2026 redness level (descending) so most red is first
-    chartData.sort((a, b) => (b.stats['2026'] || 0) - (a.stats['2026'] || 0));
+    chartData.sort((a, b) => ((b.stats['2026']?.redness) || 0) - ((a.stats['2026']?.redness) || 0));
 
     const ctx = document.getElementById('isdChart').getContext('2d');
     
@@ -356,39 +366,39 @@ function showISDChart() {
         isdChartInstance.destroy();
     }
 
+    const datasets = [];
+    const colors = {
+        '2020': 'rgba(255, 99, 132, 0.8)',
+        '2024': 'rgba(255, 206, 86, 0.8)',
+        '2025': 'rgba(75, 192, 192, 0.8)',
+        '2026': 'rgba(153, 102, 255, 0.8)'
+    };
+
+    years.forEach(year => {
+        // Redness (Circles)
+        datasets.push({
+            label: `${year} Redness`,
+            data: chartData.map((d, i) => d.stats[year] ? { x: d.stats[year].redness * 100, y: i } : null).filter(v => v !== null),
+            backgroundColor: colors[year],
+            pointStyle: 'circle',
+            pointRadius: 6,
+            pointHoverRadius: 8
+        });
+        // Turnout (Squares)
+        datasets.push({
+            label: `${year} Turnout`,
+            data: chartData.map((d, i) => d.stats[year] ? { x: d.stats[year].turnout * 100, y: i } : null).filter(v => v !== null),
+            backgroundColor: colors[year],
+            pointStyle: 'rect',
+            pointRadius: 6,
+            pointHoverRadius: 8
+        });
+    });
+
     isdChartInstance = new Chart(ctx, {
         type: 'scatter',
         data: {
-            datasets: [
-                {
-                    label: '2020',
-                    data: chartData.map((d, i) => ({ x: d.stats['2020'] * 100, y: i })),
-                    backgroundColor: 'rgba(255, 99, 132, 0.8)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
-                },
-                {
-                    label: '2024',
-                    data: chartData.map((d, i) => ({ x: d.stats['2024'] * 100, y: i })),
-                    backgroundColor: 'rgba(255, 206, 86, 0.8)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
-                },
-                {
-                    label: '2025',
-                    data: chartData.map((d, i) => ({ x: d.stats['2025'] * 100, y: i })),
-                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
-                },
-                {
-                    label: '2026',
-                    data: chartData.map((d, i) => ({ x: d.stats['2026'] * 100, y: i })),
-                    backgroundColor: 'rgba(153, 102, 255, 0.8)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
-                }
-            ]
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -397,7 +407,7 @@ function showISDChart() {
                 x: {
                     title: {
                         display: true,
-                        text: 'Redness (%)'
+                        text: 'Percentage (%)'
                     },
                     ticks: {
                         callback: function(value) {
@@ -417,23 +427,29 @@ function showISDChart() {
                 }
             },
             plugins: {
+                legend: {
+                    labels: {
+                        usePointStyle: true
+                    }
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
                             const d = chartData[context.dataIndex];
-                            const year = context.dataset.label;
+                            const label = context.dataset.label;
                             const value = context.parsed.x;
-                            return `${d.isd} (${year}): ${value.toFixed(2)}%`;
+                            return `${d.isd} ${label}: ${value.toFixed(2)}%`;
                         },
                         afterBody: function(context) {
                             const d = chartData[context[0].dataIndex];
                             return [
                                 '',
-                                `2020: ${(d.stats['2020'] * 100).toFixed(2)}%`,
-                                `2024: ${(d.stats['2024'] * 100).toFixed(2)}%`,
-                                `2025: ${(d.stats['2025'] * 100).toFixed(2)}%`,
-                                `2026: ${(d.stats['2026'] * 100).toFixed(2)}%`,
-                                `Total Change: ${(d.totalChange * 100).toFixed(2)}%`
+                                `2020: ${d.stats['2020'] ? `Redness ${(d.stats['2020'].redness * 100).toFixed(2)}%, Turnout ${(d.stats['2020'].turnout * 100).toFixed(2)}%` : 'N/A'}`,
+                                `2024: ${d.stats['2024'] ? `Redness ${(d.stats['2024'].redness * 100).toFixed(2)}%, Turnout ${(d.stats['2024'].turnout * 100).toFixed(2)}%` : 'N/A'}`,
+                                `2025: ${d.stats['2025'] ? `Redness ${(d.stats['2025'].redness * 100).toFixed(2)}%, Turnout ${(d.stats['2025'].turnout * 100).toFixed(2)}%` : 'N/A'}`,
+                                `2026: ${d.stats['2026'] ? `Redness ${(d.stats['2026'].redness * 100).toFixed(2)}%, Turnout ${(d.stats['2026'].turnout * 100).toFixed(2)}%` : 'N/A'}`,
+                                `Total Redness Change: ${d.totalChange !== null ? (d.totalChange * 100).toFixed(2) + '%' : 'N/A'}`,
+                                `Total Turnout Change: ${d.totalTurnoutChange !== null ? (d.totalTurnoutChange * 100).toFixed(2) + '%' : 'N/A'}`
                             ];
                         }
                     }
